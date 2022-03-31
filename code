@@ -1,0 +1,119 @@
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+from IPython.core.interactiveshell import InteractiveShell
+InteractiveShell.ast_node_interactivity = "all"
+from matplotlib.pylab import style #自定义图表风格
+style.use('ggplot')
+# 解决中文乱码问题
+plt.rcParams['font.sans-serif'] = ['Simhei']
+# 解决坐标轴刻度负号乱码
+plt.rcParams['axes.unicode_minus'] = False
+#pip install statsmodels
+from statsmodels.graphics.tsaplots import plot_acf,plot_pacf  #自相关图、偏自相关图
+from statsmodels.tsa.stattools import adfuller as ADF #平稳性检验
+from statsmodels.stats.diagnostic import acorr_ljungbox #白噪声检验
+import statsmodels.api as sm #D-W检验,一阶自相关检验
+from statsmodels.graphics.api import qqplot
+import statsmodels.api as sm
+#导入数据
+sale=pd.read_excel('C:\\Users\\SJC\\Desktop\\时间序列\\分享资料2\\arima_data.xls',index_col='日期')
+sale.head()
+sale.tail()
+sale.info()
+print('-----')
+sale.销量=sale.销量.astype('float')
+sale.info()
+#原始序列的检验
+  #时序图
+plt.figure(figsize=(10,5))
+sale.plot()
+plt.show()
+#解读：具有单调递增趋势，则是非平稳序列。
+ #自相关图
+plot_acf(sale,lags=35).show()
+#方法：单位根检验
+print('原始序列的ADF检验结果为：',ADF(sale.销量))
+#解读：P值大于显著性水平α（0.05），接受原假设（非平稳序列），说明原始序列是非平稳序列。
+###一阶差分序列的检验
+d1_sale=sale.diff(periods=1, axis=0).dropna()
+#时序图
+plt.figure(figsize=(10,5))
+d1_sale.plot()
+plt.show()
+#解读：在均值附件比较平稳波动
+#自相关图
+plot_acf(d1_sale,lags=34).show()
+#解读：有短期相关性，但趋向于零。
+#平稳性检验
+print('一阶差分序列的ADF检验结果为：',ADF(d1_sale.销量))
+#解读：P值小于显著性水平α（0.05），拒绝原假设（非平稳序列），说明一阶差分序列是平稳序列。
+#白噪声检验
+print('一阶差分序列的白噪声检验结果为：',acorr_ljungbox(d1_sale,lags=1))#返回统计量、P值
+#解读：p值小于0.05，拒绝原假设（纯随机序列），说明一阶差分序列是非白噪声。
+### 四、定阶
+d1_sale=sale.diff(periods=1, axis=0).dropna()
+#自相关图
+plot_acf(d1_sale,lags=15).show()
+#解读：有短期相关性，但趋向于零。
+#偏自相关图
+plot_pacf(d1_sale,lags=15).show()
+#解读：自相关图，1阶截尾；偏自相关图，拖尾。则ARIMA(p,d,q)=ARIMA(0,1,1)
+#BIC
+pmax=int(len(d1_sale)/10) #一般阶数不超过length/10
+qmax=int(len(d1_sale)/10) #一般阶数不超过length/10
+print(pmax)
+print(qmax)
+bic_matrix=[]
+for p in range(pmax+1):
+    tmp=[]
+    for q in range(qmax+1):
+        try:
+            tmp.append(sm.tsa.arima.ARIMA(sale,(p,1,q)).fit().bic)
+        except:
+            tmp.append(sm.tsa.arima.ARIMA(sale,None,(p,1,q)).fit().bic)
+    bic_matrix.append(tmp)
+bic_matrix=pd.DataFrame(bic_matrix)
+print(bic_matrix)
+bic_matrix.stack()
+p,q=bic_matrix.stack().idxmin() #最小值的索引
+print('用BIC方法得到最优的p值是%d,q值是%d'%(p,q))
+#AIC
+pmax=int(len(d1_sale)/10) #一般阶数不超过length/10
+qmax=int(len(d1_sale)/10) #一般阶数不超过length/10
+aic_matrix=[]
+for p in range(pmax+1):
+    tmp=[]
+    for q in range(qmax+1):
+        try:
+            tmp.append(sm.tsa.arima.ARIMA(sale,(p,1,q)).fit().aic)
+        except:
+            tmp.append(sm.tsa.arima.ARIMA(sale,None,(p,1,q)).fit().aic)
+    aic_matrix.append(tmp)
+aic_matrix=pd.DataFrame(aic_matrix)
+print(aic_matrix)
+aic_matrix.stack()
+p,q=aic_matrix.stack().idxmin() #最小值的索引
+print('用AIC方法得到最优的p值是%d,q值是%d'%(p,q))
+model = sm.tsa.arima.ARIMA(d1_sale, order=(1, 1, 0))
+results = model.fit()
+resid = results.resid #赋值
+fig = plt.figure(figsize=(12,8))
+fig = sm.graphics.tsa.plot_acf(resid.values.squeeze(), lags=15)
+plt.show()
+#qq图
+qqplot(resid, line='q', fit=True).show()
+model=sm.tsa.arima.ARIMA(d1_sale,order=(1,1,0))
+result=model.fit()
+print(result.summary())
+#模型预测
+model = sm.tsa.arima.ARIMA(sale, order=(1, 1, 0))
+results = model.fit()
+predict_sunspots = results.predict(start=str('2015-01-02'),end=str('2015-01-20'),dynamic=False)
+print(predict_sunspots)
+fig, ax = plt.subplots(figsize=(12, 8))
+ax = sale.plot(ax=ax)
+predict_sunspots.plot(ax=ax)
+plt.show()
+print(results.forecast()[0])
